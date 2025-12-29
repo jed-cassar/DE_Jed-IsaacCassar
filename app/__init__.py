@@ -1,0 +1,4 @@
+"""
+Event Management API Application
+"""
+
