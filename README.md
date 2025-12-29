@@ -6,6 +6,8 @@ A comprehensive FastAPI-based REST API for managing events, venues, attendees, b
 
 - [Overview](#overview)
 - [Features](#features)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
 - [API Endpoints](#api-endpoints)
 - [Database Schema](#database-schema)
 - [File Storage](#file-storage)
@@ -25,6 +27,57 @@ This API provides a complete event management system with the following capabili
 - **MongoDB Integration**: Uses Motor (async MongoDB driver) for efficient database operations
 - **RESTful Design**: Follows REST principles with proper HTTP methods and status codes
 - **Auto Documentation**: Interactive API documentation via Swagger UI
+
+## Quick Start
+
+1. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Set up environment variables** (create `.env` file):
+   ```env
+   MONGODB_URL=mongodb://localhost:27017
+   DATABASE_NAME=event_management_db
+   ```
+
+3. **Run the API**:
+   ```bash
+   uvicorn main:app --reload
+   ```
+
+4. **Access API documentation**:
+   - Swagger UI: http://localhost:8000/docs
+   - ReDoc: http://localhost:8000/redoc
+
+## Documentation
+
+This project includes comprehensive documentation:
+
+### 📚 [API Documentation](API_DOCUMENTATION.md)
+Complete technical documentation covering:
+- Detailed endpoint explanations
+- Database schema and collections
+- File storage and retrieval mechanisms
+- Database interaction patterns
+- Error handling
+- Testing guide
+
+### 🧪 [Postman Testing Guide](POSTMAN_TESTING_GUIDE.md)
+Step-by-step guide for testing the API with Postman:
+- Environment setup
+- Complete testing workflow
+- File upload testing
+- Browser testing
+- Error case testing
+
+### 🚀 [Deployment Guide](DEPLOYMENT_GUIDE.md)
+Instructions for deploying to various platforms:
+- Vercel deployment (recommended)
+- Railway, Render, Fly.io, Heroku
+- Environment variable configuration
+- Post-deployment testing
+- Troubleshooting
 
 ## Features
 
@@ -740,7 +793,10 @@ The API uses consistent error responses:
 ├── requirements.txt         # Python dependencies
 ├── vercel.json              # Vercel configuration
 ├── .env                     # Environment variables (not in git)
-└── README.md                # This file
+├── README.md                # This file (quick reference)
+├── API_DOCUMENTATION.md     # Comprehensive API documentation
+├── POSTMAN_TESTING_GUIDE.md  # Postman testing guide
+└── DEPLOYMENT_GUIDE.md      # Deployment instructions
 ```
 
 ## License

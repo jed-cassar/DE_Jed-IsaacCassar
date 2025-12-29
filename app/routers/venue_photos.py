@@ -48,7 +48,7 @@ async def upload_venue_photo(venue_id: str, file: UploadFile = File(...)):
         HTTPException: 500 if database is not connected, 400 if file is invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Read file content
@@ -86,7 +86,7 @@ async def get_venue_photos(venue_id: str):
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Find all photos for this venue, sorted by most recent first
@@ -130,7 +130,7 @@ async def get_venue_photo_file(photo_id: str):
         HTTPException: 404 if photo not found, 400 if ID format is invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     try:

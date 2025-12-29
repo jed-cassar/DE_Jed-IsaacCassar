@@ -35,7 +35,7 @@ async def create_event(event: Event):
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     event_doc = event.dict()
@@ -59,7 +59,7 @@ async def get_events():
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     events = await db.events.find().to_list(100)

@@ -35,7 +35,7 @@ async def create_venue(venue: Venue):
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     venue_doc = venue.dict()
@@ -59,7 +59,7 @@ async def get_venues():
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     venues = await db.venues.find().to_list(100)

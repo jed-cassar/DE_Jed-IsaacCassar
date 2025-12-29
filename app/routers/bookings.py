@@ -35,7 +35,7 @@ async def create_booking(booking: Booking):
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     booking_doc = booking.dict()
@@ -59,7 +59,7 @@ async def get_bookings():
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     bookings = await db.bookings.find().to_list(100)

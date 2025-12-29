@@ -45,7 +45,7 @@ async def upload_promotional_video(event_id: str, file: UploadFile = File(...)):
         HTTPException: 500 if database is not connected, 400 if file is too large or invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Read file content
@@ -89,7 +89,7 @@ async def get_promotional_video_metadata(event_id: str):
         HTTPException: 404 if no video found for the event
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Find the most recent video for this event
@@ -137,7 +137,7 @@ async def get_promotional_video_file(video_id: str):
         HTTPException: 404 if video not found, 400 if ID format is invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     try:

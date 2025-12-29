@@ -44,7 +44,7 @@ async def upload_event_poster(event_id: str, file: UploadFile = File(...)):
         HTTPException: 500 if database is not connected, 400 if file is invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Read file content
@@ -81,7 +81,7 @@ async def get_event_poster_metadata(event_id: str):
         HTTPException: 404 if no poster found for the event
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     # Find the most recent poster for this event
@@ -128,7 +128,7 @@ async def get_event_poster_file(poster_id: str):
         HTTPException: 404 if poster not found, 400 if ID format is invalid
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     try:

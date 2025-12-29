@@ -35,7 +35,7 @@ async def create_attendee(attendee: Attendee):
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     attendee_doc = attendee.dict()
@@ -59,7 +59,7 @@ async def get_attendees():
         HTTPException: 500 if database is not connected
     """
     db = get_database()
-    if not db:
+    if db is None:
         raise HTTPException(status_code=500, detail="Database not connected")
     
     attendees = await db.attendees.find().to_list(100)
