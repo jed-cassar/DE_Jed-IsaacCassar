@@ -12,7 +12,7 @@ All operations interact with the MongoDB 'attendees' collection.
 """
 from fastapi import APIRouter, HTTPException
 from app.models.attendee import Attendee, AttendeeUpdate
-from app.database import get_database, find_by_id, update_by_id, delete_by_id
+from app.database import ensure_database, find_by_id, update_by_id, delete_by_id
 
 router = APIRouter(prefix="/attendees", tags=["attendees"])
 
@@ -34,9 +34,7 @@ async def create_attendee(attendee: Attendee):
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     attendee_doc = attendee.dict()
     result = await db.attendees.insert_one(attendee_doc)
@@ -58,9 +56,7 @@ async def get_attendees():
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     attendees = await db.attendees.find().to_list(100)
     for attendee in attendees:

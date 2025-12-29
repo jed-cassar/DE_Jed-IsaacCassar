@@ -2,7 +2,7 @@
 Vercel serverless function entry point for FastAPI application
 
 This file serves as the entry point for Vercel's serverless function deployment.
-It uses Mangum to wrap the FastAPI ASGI application for serverless compatibility.
+Vercel supports FastAPI/ASGI applications natively, so we export the app directly.
 
 To deploy:
 1. Install Vercel CLI: npm i -g vercel
@@ -14,12 +14,10 @@ To deploy:
 Note: Vercel serverless functions have execution time limits. For long-running
 operations, consider using background jobs or alternative hosting solutions.
 """
-from mangum import Mangum
+# Import the FastAPI app from the main application module
+# Vercel's Python runtime will detect the 'app' variable and use it as the ASGI handler
 from app.main import app
 
-# Wrap FastAPI app with Mangum for serverless compatibility
-handler = Mangum(app, lifespan="off")
-
-# Export handler for Vercel
-__all__ = ["handler"]
+# Ensure app is available at module level for Vercel to detect
+# Vercel supports ASGI apps directly, no adapter needed
 

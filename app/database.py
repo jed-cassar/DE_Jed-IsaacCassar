@@ -112,6 +112,21 @@ async def close_mongo_connection():
         print("Disconnected from MongoDB")
 
 
+async def ensure_database():
+    """
+    Ensure database connection is established.
+    
+    For serverless environments (like Vercel), startup events may not run reliably.
+    This function ensures the database connection is established on first use.
+    
+    This is safe to call multiple times - it will only connect once.
+    """
+    global client, database
+    if database is None:
+        await connect_to_mongo()
+    return database
+
+
 def get_database():
     """
     Get the MongoDB database instance.
@@ -125,6 +140,7 @@ def get_database():
         
     Note:
         Returns None if database connection hasn't been established yet.
+        For serverless environments, use ensure_database() instead to lazily connect.
         Callers should check for None and handle appropriately.
     """
     return database
@@ -173,9 +189,7 @@ async def find_by_id(collection_name: str, item_id: str) -> Optional[Dict[str, A
         event = await find_by_id("events", "507f1f77bcf86cd799439012")
         # Returns: {"_id": "507f1f77bcf86cd799439012", "name": "Event Name", ...}
     """
-    db = get_database()
-    if db is None:
-        return None
+    db = await ensure_database()
     
     try:
         # Validate and convert string ID to MongoDB ObjectId
@@ -221,9 +235,7 @@ async def update_by_id(collection_name: str, item_id: str, update_data: Dict[str
         updated = await update_by_id("events", "507f1f77bcf86cd799439012", {"max_attendees": 1200})
         # Updates only the max_attendees field, leaves other fields unchanged
     """
-    db = get_database()
-    if db is None:
-        return False
+    db = await ensure_database()
     
     try:
         # Validate and convert string ID to MongoDB ObjectId
@@ -278,9 +290,7 @@ async def delete_by_id(collection_name: str, item_id: str) -> bool:
         This operation is permanent. Consider implementing soft deletes
         (marking as deleted) if you need to recover deleted data.
     """
-    db = get_database()
-    if db is None:
-        return False
+    db = await ensure_database()
     
     try:
         # Validate and convert string ID to MongoDB ObjectId

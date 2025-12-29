@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime
 from bson import ObjectId
 from io import BytesIO
-from app.database import get_database, validate_object_id
+from app.database import ensure_database, validate_object_id
 
 router = APIRouter(tags=["venue_photos"])
 
@@ -47,9 +47,7 @@ async def upload_venue_photo(venue_id: str, file: UploadFile = File(...)):
     Raises:
         HTTPException: 500 if database is not connected, 400 if file is invalid
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     # Read file content
     content = await file.read()
@@ -85,9 +83,7 @@ async def get_venue_photos(venue_id: str):
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     # Find all photos for this venue, sorted by most recent first
     photos = await db.venue_photos.find(
@@ -129,9 +125,7 @@ async def get_venue_photo_file(photo_id: str):
     Raises:
         HTTPException: 404 if photo not found, 400 if ID format is invalid
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     try:
         obj_id = validate_object_id(photo_id)

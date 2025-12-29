@@ -12,7 +12,7 @@ All operations interact with the MongoDB 'venues' collection.
 """
 from fastapi import APIRouter, HTTPException
 from app.models.venue import Venue, VenueUpdate
-from app.database import get_database, find_by_id, update_by_id, delete_by_id
+from app.database import ensure_database, find_by_id, update_by_id, delete_by_id
 
 router = APIRouter(prefix="/venues", tags=["venues"])
 
@@ -34,9 +34,7 @@ async def create_venue(venue: Venue):
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     venue_doc = venue.dict()
     result = await db.venues.insert_one(venue_doc)
@@ -58,9 +56,7 @@ async def get_venues():
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     venues = await db.venues.find().to_list(100)
     for venue in venues:

@@ -12,7 +12,7 @@ All operations interact with the MongoDB 'bookings' collection.
 """
 from fastapi import APIRouter, HTTPException
 from app.models.booking import Booking, BookingUpdate
-from app.database import get_database, find_by_id, update_by_id, delete_by_id
+from app.database import ensure_database, find_by_id, update_by_id, delete_by_id
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -34,9 +34,7 @@ async def create_booking(booking: Booking):
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     booking_doc = booking.dict()
     result = await db.bookings.insert_one(booking_doc)
@@ -58,9 +56,7 @@ async def get_bookings():
     Raises:
         HTTPException: 500 if database is not connected
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     bookings = await db.bookings.find().to_list(100)
     for booking in bookings:

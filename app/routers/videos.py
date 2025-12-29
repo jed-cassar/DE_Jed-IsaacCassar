@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from datetime import datetime
 from bson import ObjectId
 from io import BytesIO
-from app.database import get_database, validate_object_id
+from app.database import ensure_database, validate_object_id
 
 router = APIRouter(tags=["videos"])
 
@@ -44,9 +44,7 @@ async def upload_promotional_video(event_id: str, file: UploadFile = File(...)):
     Raises:
         HTTPException: 500 if database is not connected, 400 if file is too large or invalid
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     # Read file content
     content = await file.read()
@@ -88,9 +86,7 @@ async def get_promotional_video_metadata(event_id: str):
     Raises:
         HTTPException: 404 if no video found for the event
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     # Find the most recent video for this event
     video = await db.promotional_videos.find_one(
@@ -136,9 +132,7 @@ async def get_promotional_video_file(video_id: str):
     Raises:
         HTTPException: 404 if video not found, 400 if ID format is invalid
     """
-    db = get_database()
-    if db is None:
-        raise HTTPException(status_code=500, detail="Database not connected")
+    db = await ensure_database()
     
     try:
         obj_id = validate_object_id(video_id)
