@@ -1,20 +1,36 @@
 """
 FastAPI application initialization
+
+This module initializes the FastAPI application and includes all API routers.
+It also handles database connection lifecycle (startup and shutdown events).
 """
 from fastapi import FastAPI
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routers import events, posters
+from app.routers import (
+    events,
+    attendees,
+    venues,
+    bookings,
+    posters,
+    videos,
+    venue_photos
+)
 
 # Create FastAPI app instance
 app = FastAPI(
     title="Event Management API",
-    description="API for managing events, venues, attendees, and bookings",
+    description="API for managing events, venues, attendees, and bookings with file upload/retrieval capabilities",
     version="1.0.0"
 )
 
-# Include routers
+# Include all routers
 app.include_router(events.router)
+app.include_router(attendees.router)
+app.include_router(venues.router)
+app.include_router(bookings.router)
 app.include_router(posters.router)
+app.include_router(videos.router)
+app.include_router(venue_photos.router)
 
 
 @app.on_event("startup")

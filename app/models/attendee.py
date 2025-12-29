@@ -11,3 +11,10 @@ class Attendee(BaseModel):
     email: str
     phone: Optional[str] = None
 
+
+class AttendeeUpdate(BaseModel):
+    """Attendee update model - all fields optional for partial updates"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
