@@ -56,20 +56,24 @@ async def connect_to_mongo():
         # Determine if this is an Atlas connection (mongodb+srv://)
         is_atlas = 'mongodb+srv://' in settings.mongodb_url
         
-        # Configure connection parameters
+        # Configure connection parameters optimized for serverless environments
         connection_params = {
-            'serverSelectionTimeoutMS': 20000,  # 20 second timeout for connection attempts
-            'connectTimeoutMS': 20000,  # 20 second timeout for initial connection
-            'socketTimeoutMS': 20000,  # 20 second timeout for socket operations
+            'serverSelectionTimeoutMS': 30000,  # 30 second timeout for connection attempts
+            'connectTimeoutMS': 30000,  # 30 second timeout for initial connection
+            'socketTimeoutMS': 30000,  # 30 second timeout for socket operations
+            'maxPoolSize': 10,  # Connection pool size
+            'minPoolSize': 1,  # Minimum connections
         }
         
-        # For Atlas connections, explicitly configure TLS with certifi certificates
-        # This fixes TLSV1_ALERT_INTERNAL_ERROR on macOS
+        # For Atlas connections, let MongoDB handle SSL automatically
+        # Don't explicitly set tlsCAFile in serverless environments like Vercel
+        # mongodb+srv:// protocol handles SSL/TLS automatically
         if is_atlas:
-            # Use certifi's certificate bundle for SSL verification
-            # This is often needed on macOS to resolve SSL handshake issues
-            connection_params['tlsCAFile'] = certifi.where()
+            # Enable TLS explicitly (mongodb+srv:// does this, but being explicit)
+            connection_params['tls'] = True
             connection_params['tlsAllowInvalidCertificates'] = False
+            # Don't set tlsCAFile - let the system use default certificates
+            # This works better in serverless environments like Vercel
         
         client = motor.motor_asyncio.AsyncIOMotorClient(
             settings.mongodb_url,
@@ -86,11 +90,10 @@ async def connect_to_mongo():
         print("For MongoDB Atlas, ensure you're using: mongodb+srv://username:password@cluster.mongodb.net/")
         print("For local MongoDB, ensure MongoDB is running and use: mongodb://localhost:27017")
         print("\nTroubleshooting tips:")
-        print("1. Verify your connection string is correct")
-        print("2. Check that your IP address is whitelisted in MongoDB Atlas")
+        print("1. Verify your connection string is correct in Vercel environment variables")
+        print("2. Check MongoDB Atlas Network Access - allow connections from 0.0.0.0/0 (or Vercel's IPs)")
         print("3. Ensure your username and password are URL-encoded if they contain special characters")
-        print("4. Try updating your Python SSL certificates: pip install --upgrade certifi")
-        print("5. On macOS, ensure certifi is installed: pip install certifi")
+        print("4. Verify MONGODB_URL and DATABASE_NAME are set correctly in Vercel dashboard")
         raise
 
 
