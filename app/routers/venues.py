@@ -34,10 +34,13 @@ async def create_venue(venue: Venue):
     Raises:
         HTTPException: 500 if database is not connected
     """
+    # Design Decision: Use ensure_database() to support serverless environments
     db = await ensure_database()
     
+    # Design Decision: Convert Pydantic model to dict for MongoDB insertion
     venue_doc = venue.dict()
     result = await db.venues.insert_one(venue_doc)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     return {"message": "Venue created", "id": str(result.inserted_id)}
 
 
@@ -58,7 +61,10 @@ async def get_venues():
     """
     db = await ensure_database()
     
+    # Design Decision: Limit results to 100 items to prevent overwhelming clients
+    # For production, consider adding pagination for better performance
     venues = await db.venues.find().to_list(100)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     for venue in venues:
         venue["_id"] = str(venue["_id"])
     return venues
@@ -106,15 +112,17 @@ async def update_venue(venue_id: str, venue_update: VenueUpdate):
     Raises:
         HTTPException: 404 if venue is not found, 400 if ID format is invalid
     """
-    # Check if venue exists
+    # Design Decision: Check existence before update for clearer error messages
+    # This distinguishes between "not found" and "no changes" error cases
     venue = await find_by_id("venues", venue_id)
     if not venue:
         raise HTTPException(status_code=404, detail=f"Venue with ID {venue_id} not found")
     
-    # Prepare update data (exclude None values)
+    # Design Decision: Use exclude_unset=True for partial updates
+    # Only includes fields explicitly provided in the request body
     update_data = venue_update.dict(exclude_unset=True)
     
-    # Perform update
+    # Design Decision: Return 400 if no valid changes were made (client error)
     updated = await update_by_id("venues", venue_id, update_data)
     if not updated:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -139,6 +147,8 @@ async def delete_venue(venue_id: str):
     Raises:
         HTTPException: 404 if venue is not found, 400 if ID format is invalid
     """
+    # Design Decision: Return 404 if not found (most common case for delete)
+    # delete_by_id() handles invalid ID format gracefully by returning False
     deleted = await delete_by_id("venues", venue_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Venue with ID {venue_id} not found")

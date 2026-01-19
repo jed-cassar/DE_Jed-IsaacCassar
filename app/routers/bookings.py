@@ -34,10 +34,13 @@ async def create_booking(booking: Booking):
     Raises:
         HTTPException: 500 if database is not connected
     """
+    # Design Decision: Use ensure_database() to support serverless environments
     db = await ensure_database()
     
+    # Design Decision: Convert Pydantic model to dict for MongoDB insertion
     booking_doc = booking.dict()
     result = await db.bookings.insert_one(booking_doc)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     return {"message": "Booking created", "id": str(result.inserted_id)}
 
 
@@ -58,7 +61,10 @@ async def get_bookings():
     """
     db = await ensure_database()
     
+    # Design Decision: Limit results to 100 items to prevent overwhelming clients
+    # For production, consider adding pagination for better performance
     bookings = await db.bookings.find().to_list(100)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     for booking in bookings:
         booking["_id"] = str(booking["_id"])
     return bookings
@@ -106,15 +112,17 @@ async def update_booking(booking_id: str, booking_update: BookingUpdate):
     Raises:
         HTTPException: 404 if booking is not found, 400 if ID format is invalid
     """
-    # Check if booking exists
+    # Design Decision: Check existence before update for clearer error messages
+    # This distinguishes between "not found" and "no changes" error cases
     booking = await find_by_id("bookings", booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail=f"Booking with ID {booking_id} not found")
     
-    # Prepare update data (exclude None values)
+    # Design Decision: Use exclude_unset=True for partial updates
+    # Only includes fields explicitly provided in the request body
     update_data = booking_update.dict(exclude_unset=True)
     
-    # Perform update
+    # Design Decision: Return 400 if no valid changes were made (client error)
     updated = await update_by_id("bookings", booking_id, update_data)
     if not updated:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -139,6 +147,8 @@ async def delete_booking(booking_id: str):
     Raises:
         HTTPException: 404 if booking is not found, 400 if ID format is invalid
     """
+    # Design Decision: Return 404 if not found (most common case for delete)
+    # delete_by_id() handles invalid ID format gracefully by returning False
     deleted = await delete_by_id("bookings", booking_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Booking with ID {booking_id} not found")

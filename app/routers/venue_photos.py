@@ -49,19 +49,31 @@ async def upload_venue_photo(venue_id: str, file: UploadFile = File(...)):
     """
     db = await ensure_database()
     
-    # Read file content
+    # Read file content into memory
+    # Design Decision: Reading entire file into memory for MongoDB binary storage
+    # For venue photos typically under 5MB, this approach is optimal for simplicity.
+    # Multiple photos per venue are supported - each photo is stored as a separate
+    # document, allowing venues to have photo galleries without document size concerns.
     content = await file.read()
     
     # Create photo document with binary content
+    # Design Decision: Store photos directly in MongoDB as binary data (BSON Binary type)
+    # Multiple photos per venue: Each photo is a separate document, allowing galleries.
+    # This is more flexible than storing all photos in a single array, as it:
+    # - Allows individual photo retrieval without loading the entire gallery
+    # - Supports easy addition/removal of individual photos
+    # - Avoids document size issues (each photo is its own document)
+    # Trade-off: Simplicity vs. storage - for photos <16MB each, this works well
     photo_doc = {
         "venue_id": venue_id,
         "filename": file.filename,
-        "content_type": file.content_type,
-        "content": content,  # Stored as binary in MongoDB
-        "uploaded_at": datetime.utcnow()
+        "content_type": file.content_type,  # Preserve MIME type for proper rendering
+        "content": content,  # Stored as binary in MongoDB (BSON Binary type)
+        "uploaded_at": datetime.utcnow()  # Track upload time for sorting/ordering
     }
     
     result = await db.venue_photos.insert_one(photo_doc)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     return {"message": "Venue photo uploaded", "id": str(result.inserted_id)}
 
 
@@ -86,16 +98,24 @@ async def get_venue_photos(venue_id: str):
     db = await ensure_database()
     
     # Find all photos for this venue, sorted by most recent first
+    # Design Decision: Exclude binary content ({"content": 0}) when listing photos
+    # This endpoint returns metadata only to avoid transferring large amounts of binary
+    # data when listing multiple photos. Each photo can be retrieved individually via
+    # the file endpoint, which is more efficient for displaying galleries.
+    # Design Decision: Sort by uploaded_at descending - newest photos appear first
+    # This is a common UX pattern for photo galleries where recent additions are most relevant
     photos = await db.venue_photos.find(
         {"venue_id": venue_id},
-        {"content": 0}  # Exclude binary content from results
+        {"content": 0}  # Exclude binary content from results - metadata only
     ).sort("uploaded_at", -1).to_list(100)
     
-    # Convert ObjectIds to strings
+    # Design Decision: Limit to 100 photos to prevent overwhelming clients
+    # For venues with many photos, consider adding pagination in future versions
+    # Convert ObjectIds to strings and format dates for JSON serialization
     for photo in photos:
         photo["_id"] = str(photo["_id"])
         if "uploaded_at" in photo:
-            photo["uploaded_at"] = photo["uploaded_at"].isoformat()
+            photo["uploaded_at"] = photo["uploaded_at"].isoformat()  # ISO format for consistency
     
     return photos
 
@@ -128,6 +148,7 @@ async def get_venue_photo_file(photo_id: str):
     db = await ensure_database()
     
     try:
+        # Design Decision: Validate ObjectId before database query
         obj_id = validate_object_id(photo_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid photo ID format: {photo_id}")
@@ -138,13 +159,21 @@ async def get_venue_photo_file(photo_id: str):
     if not photo:
         raise HTTPException(status_code=404, detail=f"Photo with ID {photo_id} not found")
     
-    # Create file-like object from binary content
+    # Design Decision: Use BytesIO to create a file-like object from binary content
+    # BytesIO allows StreamingResponse to handle binary data efficiently without
+    # writing to disk, which is ideal for serverless environments
     file_content = BytesIO(photo["content"])
     
-    # Return as streaming response with proper content type
+    # Design Decision: Use StreamingResponse with proper media_type and Content-Disposition
+    # - media_type: Ensures browsers render images correctly (image/jpeg, image/png, etc.)
+    # - Content-Disposition: "inline" allows browser to display directly in galleries;
+    #   "attachment" would force download, which is less user-friendly for photos
+    # - filename: Helps with caching, saving, and browser identification
+    # StreamingResponse is more efficient than FileResponse when content is in memory,
+    # making it suitable for serverless deployments where disk access is limited
     return StreamingResponse(
         file_content,
-        media_type=photo.get("content_type", "image/jpeg"),
+        media_type=photo.get("content_type", "image/jpeg"),  # Default to JPEG if not set
         headers={
             "Content-Disposition": f'inline; filename="{photo.get("filename", "photo")}"'
         }

@@ -34,10 +34,16 @@ async def create_event(event: Event):
     Raises:
         HTTPException: 500 if database is not connected
     """
+    # Design Decision: Use ensure_database() to support serverless environments
+    # where startup events may not execute reliably
     db = await ensure_database()
     
+    # Design Decision: Convert Pydantic model to dict for MongoDB insertion
+    # Pydantic's .dict() automatically validates and serializes the data
     event_doc = event.dict()
     result = await db.events.insert_one(event_doc)
+    # Design Decision: Convert ObjectId to string for JSON response
+    # MongoDB ObjectIds are not JSON-serializable, so we convert before returning
     return {"message": "Event created", "id": str(result.inserted_id)}
 
 
@@ -58,7 +64,12 @@ async def get_events():
     """
     db = await ensure_database()
     
+    # Design Decision: Limit results to 100 items to prevent overwhelming clients
+    # and reduce response payload size. For production, consider adding pagination
+    # using skip/limit parameters for better performance with large datasets.
     events = await db.events.find().to_list(100)
+    # Design Decision: Convert ObjectId to string for JSON serialization
+    # MongoDB ObjectIds are not natively JSON-serializable, so conversion is required
     for event in events:
         event["_id"] = str(event["_id"])
     return events
@@ -106,15 +117,23 @@ async def update_event(event_id: str, event_update: EventUpdate):
     Raises:
         HTTPException: 404 if event is not found, 400 if ID format is invalid
     """
-    # Check if event exists
+    # Design Decision: Check existence before update to provide clear 404 error message
+    # This is better UX than silently failing or returning 400 from update_by_id(),
+    # which could mean either "not found" or "no changes". Checking first makes
+    # the error explicit and helps clients distinguish between different failure modes.
     event = await find_by_id("events", event_id)
     if not event:
         raise HTTPException(status_code=404, detail=f"Event with ID {event_id} not found")
     
-    # Prepare update data (exclude None values)
+    # Design Decision: Use exclude_unset=True to support true partial updates
+    # This only includes fields that were explicitly provided in the request body.
+    # Fields that were omitted (not just set to None) are excluded, allowing clients
+    # to update just the fields they want to change without sending the entire object.
     update_data = event_update.dict(exclude_unset=True)
     
-    # Perform update
+    # Design Decision: update_by_id() returns False if no changes were made
+    # We return 400 here because it's a client error - they sent data but it didn't
+    # result in any changes (either all fields matched existing values or were None)
     updated = await update_by_id("events", event_id, update_data)
     if not updated:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -139,6 +158,8 @@ async def delete_event(event_id: str):
     Raises:
         HTTPException: 404 if event is not found, 400 if ID format is invalid
     """
+    # Design Decision: Return 404 if not found (most common case for delete)
+    # delete_by_id() handles invalid ID format gracefully by returning False
     deleted = await delete_by_id("events", event_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Event with ID {event_id} not found")

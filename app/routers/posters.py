@@ -45,19 +45,29 @@ async def upload_event_poster(event_id: str, file: UploadFile = File(...)):
     """
     db = await ensure_database()
     
-    # Read file content
+    # Read file content into memory
+    # Design Decision: Reading entire file into memory for MongoDB binary storage
+    # Trade-off: This approach works well for smaller files (<16MB MongoDB limit) but
+    # may cause memory issues with very large files. For production, consider streaming
+    # to GridFS for files >1MB or implementing chunked uploads for very large images.
     content = await file.read()
     
     # Create poster document with binary content
+    # Design Decision: Store files directly in MongoDB as binary data (BSON Binary type)
+    # Advantages: Simple implementation, all data in one place, easy to retrieve
+    # Trade-offs: MongoDB document size limit (16MB), entire file in memory during operations
+    # Alternative: GridFS for larger files (>16MB), but adds complexity
+    # For most event posters (<5MB), this approach is optimal for simplicity
     poster_doc = {
         "event_id": event_id,
         "filename": file.filename,
-        "content_type": file.content_type,
-        "content": content,  # Stored as binary in MongoDB
-        "uploaded_at": datetime.utcnow()
+        "content_type": file.content_type,  # Preserve original MIME type for proper rendering
+        "content": content,  # Stored as binary in MongoDB (BSON Binary type)
+        "uploaded_at": datetime.utcnow()  # Track upload time for versioning
     }
     
     result = await db.event_posters.insert_one(poster_doc)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     return {"message": "Event poster uploaded", "id": str(result.inserted_id)}
 
 
@@ -81,6 +91,9 @@ async def get_event_poster_metadata(event_id: str):
     db = await ensure_database()
     
     # Find the most recent poster for this event
+    # Design Decision: Sort by uploaded_at descending to get the latest version
+    # This supports poster updates - new uploads become the active poster while
+    # old versions remain in the database for history/rollback if needed
     poster = await db.event_posters.find_one(
         {"event_id": event_id},
         sort=[("uploaded_at", -1)]  # Most recent first
@@ -89,13 +102,16 @@ async def get_event_poster_metadata(event_id: str):
     if not poster:
         raise HTTPException(status_code=404, detail=f"No poster found for event {event_id}")
     
-    # Return metadata without binary content
+    # Design Decision: Return metadata only, excluding binary content
+    # This endpoint is for checking if a poster exists or getting poster info
+    # without transferring the full file. The actual file is retrieved via the
+    # file endpoint, which uses streaming for better performance.
     return {
         "id": str(poster["_id"]),
         "event_id": poster["event_id"],
         "filename": poster["filename"],
         "content_type": poster["content_type"],
-        "uploaded_at": poster["uploaded_at"].isoformat()
+        "uploaded_at": poster["uploaded_at"].isoformat()  # ISO format for consistency
     }
 
 
@@ -126,6 +142,7 @@ async def get_event_poster_file(poster_id: str):
     db = await ensure_database()
     
     try:
+        # Design Decision: Validate ObjectId before database query for better error messages
         obj_id = validate_object_id(poster_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid poster ID format: {poster_id}")
@@ -136,13 +153,20 @@ async def get_event_poster_file(poster_id: str):
     if not poster:
         raise HTTPException(status_code=404, detail=f"Poster with ID {poster_id} not found")
     
-    # Create file-like object from binary content
+    # Design Decision: Use BytesIO to create a file-like object from binary content
+    # BytesIO allows FastAPI's StreamingResponse to handle the binary data efficiently
+    # without needing to write to disk, making it suitable for serverless environments
     file_content = BytesIO(poster["content"])
     
-    # Return as streaming response with proper content type
+    # Design Decision: Use StreamingResponse with proper media_type and Content-Disposition
+    # - media_type: Ensures browsers render images correctly (image/jpeg, image/png, etc.)
+    # - Content-Disposition: "inline" allows browser to display directly; "attachment" would download
+    # - filename: Helps browser identify the file for caching and saving
+    # StreamingResponse is used instead of FileResponse because the file is in memory,
+    # not on disk, making it more suitable for serverless deployments
     return StreamingResponse(
         file_content,
-        media_type=poster.get("content_type", "image/jpeg"),
+        media_type=poster.get("content_type", "image/jpeg"),  # Default to JPEG if not set
         headers={
             "Content-Disposition": f'inline; filename="{poster.get("filename", "poster")}"'
         }

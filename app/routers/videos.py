@@ -46,10 +46,19 @@ async def upload_promotional_video(event_id: str, file: UploadFile = File(...)):
     """
     db = await ensure_database()
     
-    # Read file content
+    # Read file content into memory
+    # Design Decision: Reading entire file into memory for MongoDB binary storage
+    # Trade-off: This works for videos up to 16MB (MongoDB document limit) but may cause
+    # memory pressure with larger files. For production videos >10MB, consider:
+    # - GridFS for chunked storage (handles files >16MB)
+    # - External storage (S3, Cloud Storage) with MongoDB storing only references
+    # - Streaming uploads with chunk validation
     content = await file.read()
     
-    # Check file size (16MB MongoDB document limit)
+    # Design Decision: Enforce MongoDB document size limit (16MB)
+    # This prevents database errors and provides clear error messages to clients.
+    # The 16MB limit is MongoDB's maximum document size for binary storage.
+    # For larger videos, GridFS should be used, but it adds complexity to the implementation.
     if len(content) > 16 * 1024 * 1024:  # 16MB
         raise HTTPException(
             status_code=400,
@@ -57,15 +66,20 @@ async def upload_promotional_video(event_id: str, file: UploadFile = File(...)):
         )
     
     # Create video document with binary content
+    # Design Decision: Store videos directly in MongoDB as binary data
+    # Trade-off: Simple implementation vs. storage limits. For promotional videos
+    # typically under 16MB, this approach works well. Larger production videos should
+    # use GridFS or external storage services (S3, Cloud Storage) for better scalability.
     video_doc = {
         "event_id": event_id,
         "filename": file.filename,
-        "content_type": file.content_type,
-        "content": content,  # Stored as binary in MongoDB
+        "content_type": file.content_type,  # Preserve MIME type (video/mp4, video/webm, etc.)
+        "content": content,  # Stored as binary in MongoDB (BSON Binary type)
         "uploaded_at": datetime.utcnow()
     }
     
     result = await db.promotional_videos.insert_one(video_doc)
+    # Design Decision: Convert ObjectId to string for JSON serialization
     return {"message": "Promotional video uploaded", "id": str(result.inserted_id)}
 
 
@@ -89,6 +103,8 @@ async def get_promotional_video_metadata(event_id: str):
     db = await ensure_database()
     
     # Find the most recent video for this event
+    # Design Decision: Sort by uploaded_at descending to get the latest version
+    # Supports video updates where new uploads become active while preserving history
     video = await db.promotional_videos.find_one(
         {"event_id": event_id},
         sort=[("uploaded_at", -1)]  # Most recent first
@@ -97,7 +113,10 @@ async def get_promotional_video_metadata(event_id: str):
     if not video:
         raise HTTPException(status_code=404, detail=f"No promotional video found for event {event_id}")
     
-    # Return metadata without binary content
+    # Design Decision: Return metadata only, excluding binary content
+    # This endpoint provides video info without transferring the full file, useful for
+    # checking existence or displaying video metadata. The actual file is streamed
+    # via the file endpoint, which is more efficient for large video files.
     return {
         "id": str(video["_id"]),
         "event_id": video["event_id"],
@@ -135,6 +154,7 @@ async def get_promotional_video_file(video_id: str):
     db = await ensure_database()
     
     try:
+        # Design Decision: Validate ObjectId before database query
         obj_id = validate_object_id(video_id)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid video ID format: {video_id}")
@@ -145,13 +165,22 @@ async def get_promotional_video_file(video_id: str):
     if not video:
         raise HTTPException(status_code=404, detail=f"Video with ID {video_id} not found")
     
-    # Create file-like object from binary content
+    # Design Decision: Use BytesIO to create a file-like object from binary content
+    # BytesIO allows StreamingResponse to handle binary data efficiently without
+    # writing to disk, which is important for serverless environments like Vercel
     file_content = BytesIO(video["content"])
     
-    # Return as streaming response with proper content type
+    # Design Decision: Use StreamingResponse with proper media_type and Content-Disposition
+    # - media_type: Critical for video playback - browsers/players need correct MIME type
+    #   (video/mp4, video/webm, etc.) to render videos properly
+    # - Content-Disposition: "inline" allows browser/player to play directly;
+    #   "attachment" would force download. For videos, inline is usually preferred.
+    # - filename: Helps with caching and saving functionality
+    # StreamingResponse streams the content efficiently, which is important for
+    # larger video files that may be several MB in size
     return StreamingResponse(
         file_content,
-        media_type=video.get("content_type", "video/mp4"),
+        media_type=video.get("content_type", "video/mp4"),  # Default to MP4 if not set
         headers={
             "Content-Disposition": f'inline; filename="{video.get("filename", "video")}"'
         }

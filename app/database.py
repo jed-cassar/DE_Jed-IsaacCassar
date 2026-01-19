@@ -22,6 +22,10 @@ from app.config import settings
 
 # Global MongoDB client and database instances
 # These are initialized on application startup and reused for all requests
+# Design Decision: Using global variables allows connection reuse across all requests,
+# which is more efficient than creating new connections for each request.
+# Trade-off: This approach works well for traditional deployments, but in serverless
+# environments (like Vercel), connections may be reset between invocations.
 client: motor.motor_asyncio.AsyncIOMotorClient = None
 database = None
 
@@ -54,26 +58,43 @@ async def connect_to_mongo():
         # For local MongoDB, use mongodb://localhost:27017
         
         # Determine if this is an Atlas connection (mongodb+srv://)
+        # Design Decision: Different connection handling for Atlas vs local MongoDB
+        # Atlas uses mongodb+srv:// which automatically handles DNS resolution and SSL/TLS
         is_atlas = 'mongodb+srv://' in settings.mongodb_url
         
         # Configure connection parameters optimized for serverless environments
+        # Design Rationale: These timeouts and pool sizes are chosen to balance
+        # performance and reliability in serverless environments like Vercel:
+        # - Longer timeouts (30s) account for cold starts and network latency
+        # - Smaller pool size (10) prevents connection exhaustion in serverless
+        # - minPoolSize=1 keeps at least one connection ready for faster responses
         connection_params = {
             'serverSelectionTimeoutMS': 30000,  # 30 second timeout for connection attempts
+            # Design Decision: 30s allows time for serverless function initialization
+            # and network establishment, especially important for cold starts
             'connectTimeoutMS': 30000,  # 30 second timeout for initial connection
             'socketTimeoutMS': 30000,  # 30 second timeout for socket operations
+            # Design Decision: maxPoolSize=10 is a balance between performance and
+            # resource usage. Too large wastes connections; too small causes queuing.
+            # In serverless, we use a smaller pool since functions may scale horizontally
             'maxPoolSize': 10,  # Connection pool size
-            'minPoolSize': 1,  # Minimum connections
+            'minPoolSize': 1,  # Minimum connections - keeps one ready for faster response
         }
         
         # For Atlas connections, let MongoDB handle SSL automatically
-        # Don't explicitly set tlsCAFile in serverless environments like Vercel
-        # mongodb+srv:// protocol handles SSL/TLS automatically
+        # Design Decision: Not setting tlsCAFile explicitly in serverless environments
+        # because Vercel and similar platforms have their own certificate management.
+        # The system's default certificate store works better than trying to bundle
+        # certificates in the deployment.
         if is_atlas:
             # Enable TLS explicitly (mongodb+srv:// does this, but being explicit)
+            # Design Decision: Explicitly setting TLS parameters provides clarity
+            # and ensures security even if connection string parsing changes
             connection_params['tls'] = True
             connection_params['tlsAllowInvalidCertificates'] = False
-            # Don't set tlsCAFile - let the system use default certificates
-            # This works better in serverless environments like Vercel
+            # Design Decision: Don't set tlsCAFile - let the system use default certificates
+            # This avoids certificate bundle management in serverless environments like Vercel
+            # where the runtime environment manages certificates differently
         
         client = motor.motor_asyncio.AsyncIOMotorClient(
             settings.mongodb_url,
@@ -125,6 +146,10 @@ async def ensure_database():
     This is safe to call multiple times - it will only connect once.
     """
     global client, database
+    # Design Decision: Lazy connection pattern for serverless environments
+    # In serverless (Vercel), lifespan events may not execute reliably, so we
+    # use this pattern to ensure connection on first request. The check for None
+    # ensures we only connect once even if ensure_database() is called multiple times.
     if database is None:
         await connect_to_mongo()
     return database
@@ -162,9 +187,15 @@ def validate_object_id(id_string: str) -> ObjectId:
     Raises:
         ValueError: If the ID string is invalid
     """
+    # Design Decision: Centralized ObjectId validation prevents code duplication
+    # and ensures consistent error handling across all endpoints. This function
+    # validates that IDs are properly formatted MongoDB ObjectIds (24 hex chars)
+    # before attempting database operations, providing better error messages.
     try:
         return ObjectId(id_string)
     except (InvalidId, TypeError):
+        # Design Decision: Convert MongoDB-specific exceptions to ValueError for
+        # consistency with Python conventions and easier error handling in routers
         raise ValueError(f"Invalid ID format: {id_string}")
 
 
@@ -192,22 +223,31 @@ async def find_by_id(collection_name: str, item_id: str) -> Optional[Dict[str, A
         event = await find_by_id("events", "507f1f77bcf86cd799439012")
         # Returns: {"_id": "507f1f77bcf86cd799439012", "name": "Event Name", ...}
     """
+    # Design Decision: Use ensure_database() instead of get_database() to support
+    # serverless environments where startup events may not run. This ensures
+    # connection is established on first use.
     db = await ensure_database()
     
     try:
         # Validate and convert string ID to MongoDB ObjectId
+        # Design Rationale: Validate early to provide clear error messages before
+        # attempting database query, which improves developer experience
         obj_id = validate_object_id(item_id)
         
         # Get collection and query by _id
         collection = db[collection_name]
         document = await collection.find_one({"_id": obj_id})
         
-        # Convert ObjectId to string for JSON serialization
+        # Design Decision: Convert ObjectId to string for JSON serialization
+        # MongoDB ObjectIds are not JSON-serializable, so we convert to string.
+        # This is done in the database layer to keep serialization logic centralized
+        # and consistent across all endpoints.
         if document:
             document["_id"] = str(document["_id"])
         return document
     except ValueError:
-        # Invalid ID format
+        # Invalid ID format - return None instead of raising to allow endpoints
+        # to handle the error appropriately (e.g., return 404 vs 400)
         return None
 
 
@@ -244,22 +284,29 @@ async def update_by_id(collection_name: str, item_id: str, update_data: Dict[str
         # Validate and convert string ID to MongoDB ObjectId
         obj_id = validate_object_id(item_id)
         
-        # Remove None values from update_data to avoid overwriting fields
-        # This allows partial updates where only specified fields are changed
+        # Design Decision: Remove None values to avoid overwriting fields with None
+        # This allows partial updates where clients only send fields they want to change.
+        # Without filtering, None values would clear existing fields unintentionally.
         filtered_update = {k: v for k, v in update_data.items() if v is not None}
         
-        # If no valid fields to update, return False
+        # Design Decision: Return False if no valid fields to update rather than raising
+        # This allows callers to distinguish between "no changes needed" and "not found"
         if not filtered_update:
             return False
         
-        # Perform update using $set operator (partial update)
+        # Design Decision: Use $set operator for partial updates
+        # MongoDB's $set operator updates only specified fields, leaving others unchanged.
+        # This is more efficient than replacing the entire document and preserves
+        # fields that weren't included in the update request.
         collection = db[collection_name]
         result = await collection.update_one(
             {"_id": obj_id},
             {"$set": filtered_update}
         )
         
-        # Return True if document was modified
+        # Design Decision: Check modified_count instead of matched_count
+        # modified_count tells us if the document was actually changed (not just found).
+        # This handles cases where the update values are the same as existing values.
         return result.modified_count > 0
     except ValueError:
         # Invalid ID format
